@@ -1,0 +1,13 @@
+FROM golang:1.15.2-buster AS build
+
+WORKDIR /build
+
+COPY main.go .
+
+RUN go build -o backend ./
+
+FROM debian:buster-slim
+
+COPY --from=build /build/backend /usr/local/bin
+
+ENTRYPOINT ["backend"]

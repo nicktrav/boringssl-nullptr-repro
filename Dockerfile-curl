@@ -1,0 +1,81 @@
+# ------------------------------------------------------------------------------
+# Base
+# ------------------------------------------------------------------------------
+
+FROM debian:buster-slim AS base
+
+RUN \
+  apt-get update && \
+  apt-get install -y \
+    autoconf \
+    cmake \
+    g++ \
+    gdb \
+    git \
+    libtool \
+    make \
+    strace \
+    wget
+
+ENV PATH=$PATH:/usr/local/go/bin
+
+# ------------------------------------------------------------------------------
+# BoringSSL - source
+# ------------------------------------------------------------------------------
+
+FROM base AS boringssl-source
+
+WORKDIR /build/boringssl
+
+RUN git clone https://boringssl.googlesource.com/boringssl .
+
+# ------------------------------------------------------------------------------
+# BoringSSL - build
+# ------------------------------------------------------------------------------
+
+FROM boringssl-source AS boringssl-build
+
+RUN \
+  wget https://golang.org/dl/go1.15.2.linux-amd64.tar.gz && \
+  tar -C /usr/local -xzf go1.15.2.linux-amd64.tar.gz
+
+ARG BORINGSSL_VERSION
+
+RUN git checkout $BORINGSSL_VERSION
+
+RUN \
+  mkdir build lib && \
+  cd build && \
+  cmake .. && \
+  make && \
+  cp ./ssl/libssl.a ../lib/ && \
+  cp ./crypto/libcrypto.a ../lib/
+
+# ------------------------------------------------------------------------------
+# Curl
+# ------------------------------------------------------------------------------
+
+FROM base AS curl-build
+
+COPY --from=boringssl-build /build/boringssl/include /usr/include/ssl
+COPY --from=boringssl-build /build/boringssl/lib /usr/lib/ssl
+
+WORKDIR /build/curl
+
+RUN git clone https://github.com/curl/curl.git .
+
+ARG CURL_VERSION
+
+RUN git checkout ${CURL_VERSION}
+
+RUN \
+  autoreconf -i && \
+  CPPFLAGS="-I/usr/include/ssl" LDFLAGS="-L/usr/lib/ssl -static" ./configure \
+    --prefix=/usr \
+    --with-ssl \
+    --enable-debug \
+    --disable-shared \
+    --enable-static && \
+  make install
+
+WORKDIR /

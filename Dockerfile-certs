@@ -1,0 +1,21 @@
+FROM golang:1.15.2-buster AS build
+
+WORKDIR /build
+
+RUN \
+  apt-get update && \
+  apt-get install -y git && \
+  git clone https://github.com/filosottile/mkcert . && \
+  go build
+
+FROM debian:buster-slim
+
+RUN useradd mkcert -s /bin/bash -m
+
+USER mkcert
+
+WORKDIR /certs
+
+ENV CAROOT /certs
+
+COPY --from=build /build/mkcert /usr/local/bin
